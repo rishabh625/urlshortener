@@ -39,7 +39,7 @@ This project provides an API for shortening the URL. It uses the standard http r
     - Run the application:
 
         ```bash
-        go run server/cmd/main.go 
+        go run cmd/main.go 
         ```
 
     - The server will be available on `http://localhost:8080`.
