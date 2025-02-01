@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/deatil/go-encoding/encoding"
-	"math/rand"
+	"github.com/google/uuid"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 	"urlshortener/internal/database"
 	"urlshortener/internal/entities"
@@ -19,7 +19,9 @@ type URLShortenService struct {
 	db database.InMemoryDatabase
 }
 
-const MAXRANDOM = 10000000
+const UpperBoundLengthHash = 32
+const UpperBoundEncodedLength = 10
+const UpperBoundHashCheck = 3
 
 var re = regexp.MustCompile("^https?:\\/\\/[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(\\/.*)?$")
 var FixDomain string
@@ -100,18 +102,29 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 // approximately it returns 6*2 characters in hexa decimal format , this hexa value is base62 encoded.
 func (u *URLShortenService) GenerateHashOfURL(ctx context.Context, URL string) string {
 	seed := ""
+	hashCheck := 0
+	hashLength := 16
+	encodedLength := 6
 	for {
 		hash := sha256.Sum256([]byte(URL + seed))
-		shortHash := hash[:6]
-		dst := make([]byte, hex.EncodedLen(len(shortHash)))
-		hex.Encode(dst, shortHash)
-		key := fmt.Sprintf("%x", dst)
-		encodedData := encoding.FromString(key).Base62Encode()
-		err := u.db.CheckDuplicateRequest(ctx, encodedData.String())
+		shortHash := hash[:hashLength]
+		encodedData := encoding.FromString(string(shortHash)).Base62Encode().String()
+		encodedValue := strings.ToUpper(encodedData[:encodedLength])
+		err := u.db.CheckDuplicateRequest(ctx, encodedValue)
+		id := uuid.New()
 		if err != nil {
-			seed = fmt.Sprintf("%d", time.Now().UnixNano()) + fmt.Sprintf("%d", rand.Int63n(MAXRANDOM))
+			seed = fmt.Sprintf("%d", time.Now().UnixNano()) + fmt.Sprintf("%s", id.String())
 		} else {
-			return encodedData.String()
+			return encodedValue
+		}
+		hashCheck++
+		if hashCheck > UpperBoundHashCheck {
+			if hashLength < UpperBoundLengthHash {
+				hashLength++
+			}
+			if encodedLength < UpperBoundEncodedLength {
+				encodedLength++
+			}
 		}
 	}
 }
