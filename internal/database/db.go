@@ -13,7 +13,7 @@ type InMemoryDatabase struct {
 	metricsDB   sync.Map                           // Retrieval DB
 	longUrlDB   map[string]string                  // Duplicate Request DB
 	repeatUrlDB map[string]bool                    // collision db
-	topDomains  []entities.TopDomains
+	topDomains  *[]entities.TopDomains
 	mu          sync.RWMutex
 }
 
@@ -26,7 +26,7 @@ func NewInMemoryDatabase() *InMemoryDatabase {
 		shortUrlDB:  shortUrlDB,
 		repeatUrlDB: repeatUrlDB,
 		longUrlDB:   longUrlDB,
-		topDomains:  topDomains,
+		topDomains:  &topDomains,
 	}
 }
 
@@ -60,7 +60,8 @@ func (db *InMemoryDatabase) AddData(ctx context.Context, key string, data entiti
 
 func (db *InMemoryDatabase) CheckDuplicateRequest(ctx context.Context, key string) error {
 	if _, ok := db.repeatUrlDB[key]; ok {
-		errors.New("Duplicate Request")
+		err := errors.New("Duplicate Request")
+		return err
 	}
 	return nil
 }
@@ -96,17 +97,18 @@ func (db *InMemoryDatabase) PopulateTop3Domain(ctx context.Context) {
 	})
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	db.topDomains = make([]entities.TopDomains, 0, 3)
+	topDomains := make([]entities.TopDomains, 0)
 	for i := 0; i < len(domains) && i < 3; i++ {
-		db.topDomains = append(db.topDomains, entities.TopDomains{
+		topDomains = append(topDomains, entities.TopDomains{
 			Domain: domains[i].Domain,
 			Count:  domains[i].Count,
 		})
 	}
+	db.topDomains = &topDomains
 }
 
 func (db *InMemoryDatabase) RetrieveTop3Domain(ctx context.Context) []entities.TopDomains {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	return append([]entities.TopDomains{}, db.topDomains...)
+	return append([]entities.TopDomains{}, *db.topDomains...)
 }

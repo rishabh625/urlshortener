@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/deatil/go-encoding/encoding"
 	"math/rand"
 	"net/url"
+	"regexp"
 	"time"
 	"urlshortener/internal/database"
 	"urlshortener/internal/entities"
@@ -18,9 +20,12 @@ type URLShortenService struct {
 }
 
 const MAXRANDOM = 10000000
-const FixDomain = "shorty.tk"
 
-func NewURLShortenService(db database.InMemoryDatabase) *URLShortenService {
+var re = regexp.MustCompile("^https?:\\/\\/[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(\\/.*)?$")
+var FixDomain string
+
+func NewURLShortenService(db database.InMemoryDatabase, domain string) *URLShortenService {
+	FixDomain = domain
 	return &URLShortenService{db: db}
 }
 
@@ -36,17 +41,26 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 	if err != nil {
 		return nil, err
 	}
+	if URL.Scheme != "http" && URL.Scheme != "https" {
+		URL.Scheme = "https"
+	}
+	if URL.Host == "" {
+		return nil, errors.New("Invalid URL")
+	}
+	if !re.MatchString(URL.String()) {
+		return nil, errors.New("Invalid URL")
+	}
 	res := u.db.RetrieveDuplicateURL(ctx, URL.String())
 	if res == "" {
 		hash := u.GenerateHashOfURL(ctx, URL.String())
-		var shorturl string
+		var shortURL string
 		if request.Domain == "" {
-			shorturl = fmt.Sprintf("https://%s/%s", FixDomain, hash)
+			shortURL = fmt.Sprintf("%s/%s", FixDomain, hash)
 		} else {
-			shorturl = fmt.Sprintf("https://%s/%s", request.Domain, hash)
+			shortURL = fmt.Sprintf("%s/%s", request.Domain, hash)
 		}
 		response := entities.ShortenURLResponse{
-			ShortURl:   shorturl,
+			ShortURl:   shortURL,
 			CreatedAt:  time.Now(),
 			ExpiryDate: time.Now().AddDate(0, 0, 7),
 		}
@@ -70,9 +84,9 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 	}
 	result := u.db.RetrieveData(ctx, res)
 	if result.Domain == "" {
-		result.ShortURl = fmt.Sprintf("https://%s/%d", FixDomain, result.ShortURl)
+		result.ShortURl = fmt.Sprintf("https://%s/%s", FixDomain, result.ShortURl)
 	} else {
-		result.ShortURl = fmt.Sprintf("https://%s/%d", result.Domain, result.ShortURl)
+		result.ShortURl = fmt.Sprintf("https://%s/%s", result.Domain, result.ShortURl)
 	}
 	return &entities.ShortenURLResponse{
 		ShortURl:   result.ShortURl,
@@ -81,6 +95,9 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 	}, nil
 }
 
+// GenerateHashOfURL : hashes long URL with https schema , for hashing it uses sha256, once
+// sha256 sum is obtained first 6 character of sha256 is converted into hexa decimal
+// approximately it returns 6*2 characters in hexa decimal format , this hexa value is base62 encoded.
 func (u *URLShortenService) GenerateHashOfURL(ctx context.Context, URL string) string {
 	seed := ""
 	for {
@@ -108,4 +125,8 @@ func (u *URLShortenService) RedirectURL(ctx context.Context, hash string) *entit
 		}
 	}
 	return nil
+}
+
+func (u *URLShortenService) RetrieveTop3Domains(ctx context.Context) []entities.TopDomains {
+	return u.db.RetrieveTop3Domain(ctx)
 }
