@@ -13,3 +13,7 @@ K
 internal/service/service.go,9/0/9031790019f4df1fb7566bd9316bb087af822411
 M
 internal/entities/entities.go,5/a/5a3cbea9b5bab6ae2946c49060c6d36ca419887c
+I
+internal/service/crong.go,8/b/8bdd81ac4d6c20af64f4a9a3fd11d6f1ea63e0a6
+H
+internal/service/cron.go,c/8/c897fa5a146ec7a0d10fb553d5aef2d92f1d0894

@@ -18,6 +18,7 @@ type URLShortenService struct {
 }
 
 const MAXRANDOM = 10000000
+const FixDomain = "shorty.tk"
 
 func NewURLShortenService(db database.InMemoryDatabase) *URLShortenService {
 	return &URLShortenService{db: db}
@@ -25,7 +26,7 @@ func NewURLShortenService(db database.InMemoryDatabase) *URLShortenService {
 
 type URLShortener interface {
 	ShortenURL(ctx context.Context, request entities.ShortenURLRequest) (*entities.ShortenURLResponse, error)
-	RedirectURL(ctx context.Context, request entities.RedirectShortURLRequest) *entities.RedirectShortURLRequest
+	RedirectURL(ctx context.Context, data string) *entities.RedirectShortURLResponse
 	GenerateHashOfURL(ctx context.Context, URL string) string
 }
 
@@ -35,12 +36,12 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 	if err != nil {
 		return nil, err
 	}
-	result := u.db.RetrieveData(ctx, URL.String())
-	if result == nil {
+	res := u.db.RetrieveDuplicateURL(ctx, URL.String())
+	if res == "" {
 		hash := u.GenerateHashOfURL(ctx, URL.String())
 		var shorturl string
 		if request.Domain == "" {
-			shorturl = fmt.Sprintf("https://shorty.tk/%s", hash)
+			shorturl = fmt.Sprintf("https://%s/%s", FixDomain, hash)
 		} else {
 			shorturl = fmt.Sprintf("https://%s/%s", request.Domain, hash)
 		}
@@ -49,18 +50,29 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 			CreatedAt:  time.Now(),
 			ExpiryDate: time.Now().AddDate(0, 0, 7),
 		}
+		domain := FixDomain
+		if request.Domain != "" {
+			domain = request.Domain
+		}
 		dbData := entities.ShortURLDBData{
-			LongURL:    request.LongURL,
-			Domain:     request.Domain,
-			ShortURl:   shorturl,
-			CreatedAt:  response.CreatedAt,
-			ExpiryDate: response.ExpiryDate,
+			LongURL:       request.LongURL,
+			Domain:        domain,
+			LongURLDomain: URL.Host,
+			ShortURl:      hash,
+			CreatedAt:     response.CreatedAt,
+			ExpiryDate:    response.ExpiryDate,
 		}
 		err := u.db.AddData(ctx, hash, dbData)
 		if err != nil {
 			return nil, err
 		}
 		return &response, nil
+	}
+	result := u.db.RetrieveData(ctx, res)
+	if result.Domain == "" {
+		result.ShortURl = fmt.Sprintf("https://%s/%d", FixDomain, result.ShortURl)
+	} else {
+		result.ShortURl = fmt.Sprintf("https://%s/%d", result.Domain, result.ShortURl)
 	}
 	return &entities.ShortenURLResponse{
 		ShortURl:   result.ShortURl,
@@ -73,16 +85,27 @@ func (u *URLShortenService) GenerateHashOfURL(ctx context.Context, URL string) s
 	seed := ""
 	for {
 		hash := sha256.Sum256([]byte(URL + seed))
-		shortHash := hash[:8]
+		shortHash := hash[:6]
 		dst := make([]byte, hex.EncodedLen(len(shortHash)))
 		hex.Encode(dst, shortHash)
-		key := fmt.Sprintf("%x", hash)
-		encoding.FromString(key).Base62Encode()
-		err := u.db.CheckDuplicateRequest(ctx, key)
+		key := fmt.Sprintf("%x", dst)
+		encodedData := encoding.FromString(key).Base62Encode()
+		err := u.db.CheckDuplicateRequest(ctx, encodedData.String())
 		if err != nil {
 			seed = fmt.Sprintf("%d", time.Now().UnixNano()) + fmt.Sprintf("%d", rand.Int63n(MAXRANDOM))
 		} else {
-			return key
+			return encodedData.String()
 		}
 	}
+}
+
+func (u *URLShortenService) RedirectURL(ctx context.Context, hash string) *entities.RedirectShortURLResponse {
+	resp := u.db.RetrieveData(ctx, hash)
+	if resp != nil && time.Now().Before(resp.ExpiryDate) {
+		return &entities.RedirectShortURLResponse{
+			LongURl: resp.LongURL,
+			Domain:  resp.Domain,
+		}
+	}
+	return nil
 }

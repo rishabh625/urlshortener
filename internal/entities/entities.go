@@ -3,29 +3,31 @@ package entities
 import "time"
 
 type ShortenURLRequest struct {
-	LongURL string
-	Domain  string
+	LongURL string `json:"longURL"`
+	Domain  string `json:"domain"`
 }
 
 type ShortenURLResponse struct {
-	ShortURl   string
+	ShortURl   string `json:"shortURL"`
 	CreatedAt  time.Time
 	ExpiryDate time.Time
-	Error      string
 }
 
 type ShortURLDBData struct {
-	LongURL    string
-	Domain     string
-	ShortURl   string
-	CreatedAt  time.Time
-	ExpiryDate time.Time
-}
-
-type RedirectShortURLRequest struct {
-	ShortURl string
+	LongURL       string
+	Domain        string
+	LongURLDomain string
+	ShortURl      string
+	CreatedAt     time.Time
+	ExpiryDate    time.Time
 }
 
 type RedirectShortURLResponse struct {
 	LongURl string
+	Domain  string
+}
+
+type TopDomains struct {
+	Domain string
+	Count  int
 }
