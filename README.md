@@ -86,8 +86,5 @@ This endpoint returns top 3 domain , for which shorten URL service was used
 ### Curl Call
 ```
 curl --location --request GET 'http://localhost:8080/metrics' \
---header 'Content-Type: application/json' \
---data '{
-    "longURL":"https://www.baeldung.com/cs/redirection-status-codes"
-}'
+--header 'Content-Type: application/json' '
 ```
