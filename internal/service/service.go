@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/deatil/go-encoding/encoding"
 	"github.com/google/uuid"
+	"log"
 	"net/url"
 	"regexp"
 	"strings"
@@ -55,6 +57,10 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 	res := u.db.RetrieveDuplicateURL(ctx, URL.String())
 	if res == "" {
 		hash := u.GenerateHashOfURL(ctx, URL.String())
+		if hash == "" {
+			log.Printf("Could not generate short url due to unavailability of hash for long URL: %s", URL.String())
+			return nil, errors.New("Service Unavailable Could not generate Hash ")
+		}
 		var shortURL string
 		if request.Domain == "" {
 			shortURL = fmt.Sprintf("%s/%s", FixDomain, hash)
@@ -86,9 +92,9 @@ func (u *URLShortenService) ShortenURL(ctx context.Context, request entities.Sho
 	}
 	result := u.db.RetrieveData(ctx, res)
 	if result.Domain == "" {
-		result.ShortURl = fmt.Sprintf("https://%s/%s", FixDomain, result.ShortURl)
+		result.ShortURl = fmt.Sprintf("%s/%s", FixDomain, result.ShortURl)
 	} else {
-		result.ShortURl = fmt.Sprintf("https://%s/%s", result.Domain, result.ShortURl)
+		result.ShortURl = fmt.Sprintf("%s/%s", result.Domain, result.ShortURl)
 	}
 	return &entities.ShortenURLResponse{
 		ShortURl:   result.ShortURl,
@@ -108,11 +114,13 @@ func (u *URLShortenService) GenerateHashOfURL(ctx context.Context, URL string) s
 	for {
 		hash := sha256.Sum256([]byte(URL + seed))
 		shortHash := hash[:hashLength]
-		encodedData := encoding.FromString(string(shortHash)).Base62Encode().String()
+		key := hex.EncodeToString(shortHash)
+		encodedData := encoding.FromString(key).Base62Encode().String()
 		encodedValue := strings.ToUpper(encodedData[:encodedLength])
 		err := u.db.CheckDuplicateRequest(ctx, encodedValue)
 		id := uuid.New()
 		if err != nil {
+			log.Printf("Collision Detected for URL : %v", URL)
 			seed = fmt.Sprintf("%d", time.Now().UnixNano()) + fmt.Sprintf("%s", id.String())
 		} else {
 			return encodedValue
@@ -121,6 +129,8 @@ func (u *URLShortenService) GenerateHashOfURL(ctx context.Context, URL string) s
 		if hashCheck > UpperBoundHashCheck {
 			if hashLength < UpperBoundLengthHash {
 				hashLength++
+			} else {
+				return ""
 			}
 			if encodedLength < UpperBoundEncodedLength {
 				encodedLength++
